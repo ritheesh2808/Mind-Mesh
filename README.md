@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mind-Mesh — AI Collaborative Learning Intelligence
 
-## Getting Started
+**Problem Statement Alignment:**  
+Students working in groups often face unequal participation, fragmented discussions, and difficulty combining individual contributions into a coherent solution. Mind-Mesh analyzes authorized group discussions, shared documents, and task contributions to identify knowledge exchange patterns, quantify participation equity, detect debate divergence, summarize collective insights, and synthesize an integrated solution blueprint.
 
-First, run the development server:
+---
 
+## 🚀 Full Stack Architecture
+
+- **Frontend**: Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS v4 + Framer Motion
+- **State & UI**: Zustand (with local persistence fallback), Recharts, `@xyflow/react` (knowledge graph), Lucide Icons
+- **Backend API**: Python FastAPI + Uvicorn + Pydantic
+- **Database & Cloud**: Supabase (PostgreSQL 15+, Row Level Security, pgvector ready)
+
+---
+
+## 🏃 Run Locally
+
+### 1. Frontend (Next.js)
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+Open [http://localhost:3000](http://localhost:3000).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Backend (FastAPI + Supabase)
+```bash
+pip install -r backend/requirements.txt
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+- Interactive API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Health & Supabase Status: [http://localhost:8000/health](http://localhost:8000/health)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Supabase Setup
+1. Create a project at [supabase.com](https://supabase.com).
+2. Execute `backend/supabase_schema.sql` in the Supabase SQL Editor.
+3. Configure `.env.local` based on `.env.example`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 🌟 Key Features
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Voice Equity Index (Gini-Coefficient Analysis)**:
+   - Evaluates multi-dimensional contributions (tasks, discussions, authored artifacts).
+   - Detects overloaded knowledge bottlenecks and under-represented group members.
+2. **Fragmented Discussion & Consensus Engine**:
+   - Classifies architectural debates and unresolved blockers.
+   - Provides live interactive pro/con consensus voting on AI-suggested resolutions.
+3. **Coherent Solution Blueprint Synthesis**:
+   - Synthesizes separate student modules (Data Ingestion, ML Inference Core, Threat Evasion, UI Analytics, API Security) into a unified deliverable.
+   - 1-Click Markdown Blueprint Export with explicit author attributions and consensus records.
+4. **Targeted Collaboration Activity Rooms**:
+   - Interactive Activity Execution Room with agenda checklists, takeaways scratchpad, and automatic deliverable task completion upon knowledge transfer.
