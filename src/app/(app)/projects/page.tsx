@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,30 @@ import { getUser } from "@/lib/mock-data";
 import { formatRelative } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import { useAppStore } from "@/store/app-store";
+import { getProjects } from "@/lib/api";
 
 export default function ProjectsPage() {
   const user = useAuthStore((s) => s.user);
   const projects = useAppStore((s) => s.projects);
+  const syncProjects = useAppStore((s) => s.syncProjects);
+
+  useEffect(() => {
+    let mounted = true;
+    getProjects().then((fetched) => {
+      if (!mounted) return;
+      if (fetched && fetched.length > 0) {
+        syncProjects(fetched);
+      }
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [syncProjects]);
+
   const myProjects = projects.filter((p) =>
+    !user ||
+    p.ownerId === user.id ||
+    p.ownerId === "u1" ||
     p.members.some((m) => m.userId === user?.id || m.userId === "u1")
   );
 
@@ -50,7 +70,7 @@ export default function ProjectsPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {myProjects.map((p) => {
             const names = p.members
-              .map((m) => getUser(m.userId)?.name || "")
+              .map((m) => m.name || getUser(m.userId)?.name || m.userId)
               .filter(Boolean);
             return (
               <Link key={p.id} href={`/projects/${p.id}`}>

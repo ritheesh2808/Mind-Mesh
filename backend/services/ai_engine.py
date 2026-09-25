@@ -13,7 +13,7 @@ from backend.schemas import (
 
 class CollaborativeAIEngine:
     """
-    AI based collaborative learning intelligence engine.
+    AI-based collaborative learning intelligence engine.
     Solves:
       1. Unequal participation & knowledge exchange imbalances (Gini analysis)
       2. Fragmented discussions & divergent debates
@@ -59,7 +59,7 @@ class CollaborativeAIEngine:
         user_totals: Dict[str, Dict[str, Any]] = {}
 
         for m in members:
-            uid = m.get("user_id") or m.get("id")
+            uid = m.get("user_id") or m.get("id") or m.get("userId")
             name = m.get("name") or f"Member {uid}"
             user_totals[uid] = {
                 "name": name,
@@ -174,25 +174,90 @@ class CollaborativeAIEngine:
                 if total_votes > 0:
                     divergence = round(abs(pro - con) / total_votes, 2)
                 else:
-                    divergence = 0.85 # High uncertainty when zero votes
+                    divergence = 0.85 # High uncertainty if no votes
 
-                suggested = d.get("resolution") or (
-                    "Convene a 30-minute peer alignment workshop to converge on an agreed API interface contract."
+                suggested_resolution = d.get("resolution") or (
+                    f"Synthesize discussion points from '{d.get('title')}' into an explicit project milestone."
                 )
 
                 debates.append(
                     FragmentedDebateItem(
-                        id=d.get("id", ""),
-                        title=d.get("title", ""),
-                        status=status,
+                        id=d.get("id", "d-unknown"),
+                        title=d.get("title", "Untitled Thread"),
                         divergence_score=divergence,
+                        status="resolved" if (status == "resolved" or pro > con * 2) else "unresolved",
                         pro_votes=pro,
                         con_votes=con,
-                        suggested_resolution=suggested
+                        suggested_resolution=suggested_resolution
                     )
                 )
 
         return debates
+
+    @classmethod
+    def synthesize_collective_insights(
+        cls,
+        equity: EquityAnalysisResponse,
+        debates: List[FragmentedDebateItem]
+    ) -> List[CollectiveInsightItem]:
+        """
+        Synthesizes cross-cutting patterns across Voice Equity and Debates
+        into actionable, high-level learning insights.
+        """
+        insights: List[CollectiveInsightItem] = []
+
+        if equity.gini_coefficient > 0.35 and equity.bottlenecks:
+            insights.append(
+                CollectiveInsightItem(
+                    id="ins-equity-1",
+                    type="equity_imbalance",
+                    title="Knowledge Silo & Lead Dependency Detected",
+                    description=(
+                        f"Voice equity index is {equity.equity_score}%. "
+                        f"{', '.join(equity.bottlenecks)} currently accounts for disproportionate contributions. "
+                        f"Encourage peer pairing to avoid knowledge bottlenecks."
+                    ),
+                    severity="high" if equity.gini_coefficient > 0.5 else "medium",
+                    action_items=[
+                        "Schedule a 15-minute knowledge transfer walkthrough",
+                        "Reassign pending unblocked tasks to under-represented team members"
+                    ]
+                )
+            )
+
+        if debates:
+            unresolved = [deb for deb in debates if deb.status == "unresolved"]
+            if unresolved:
+                insights.append(
+                    CollectiveInsightItem(
+                        id="ins-debate-1",
+                        type="unresolved_debate",
+                        title=f"{len(unresolved)} Divergent Technical Decision(s) Require Alignment",
+                        description=(
+                            f"Discussions such as '{unresolved[0].title}' have divergent consensus. "
+                            f"Timeboxing an alignment vote is recommended to prevent development stall."
+                        ),
+                        severity="medium",
+                        action_items=[
+                            f"Review suggested resolution: {unresolved[0].suggested_resolution[:80]}...",
+                            "Conduct consensus vote across all project contributors"
+                        ]
+                    )
+                )
+
+        if not insights:
+            insights.append(
+                CollectiveInsightItem(
+                    id="ins-healthy-1",
+                    type="healthy_collaboration",
+                    title="Healthy Collaboration & Balanced Knowledge Flow",
+                    description="Team contributions and technical discussions are currently well-balanced.",
+                    severity="low",
+                    action_items=["Maintain current sprint velocity and peer reviews"]
+                )
+            )
+
+        return insights
 
     @classmethod
     def generate_recommended_activities(
@@ -202,13 +267,13 @@ class CollaborativeAIEngine:
         debates: List[FragmentedDebateItem]
     ) -> List[AIRecommendationItem]:
         """
-        Generates targeted, high-impact collaborative learning activities
-        specifically addressing detected deficits in participation or consensus.
+        Generates targeted collaboration activity recommendations (Pair Programming,
+        Knowledge Transfer, Consensus Alignment) based on real-time equity gaps and debate fragmentation.
         """
         recs: List[AIRecommendationItem] = []
         idx = 1
 
-        # 1. Address severe or moderate imbalance
+        # 1. Address knowledge silos / bottlenecks
         if equity.bottlenecks and equity.isolated_members:
             lead = equity.bottlenecks[0]
             peer = equity.isolated_members[0]
@@ -290,7 +355,7 @@ class CollaborativeAIEngine:
         # Map user names
         user_map = {}
         for m in members:
-            uid = m.get("user_id") or m.get("id")
+            uid = m.get("user_id") or m.get("id") or m.get("userId")
             name = m.get("name") or f"Member {uid}"
             user_map[uid] = name
 
@@ -350,7 +415,6 @@ class CollaborativeAIEngine:
                     deliverables=["System specification", "Core interface definition"]
                 )
             )
-
 
         # Consensus decisions
         agreed_decisions: List[str] = []

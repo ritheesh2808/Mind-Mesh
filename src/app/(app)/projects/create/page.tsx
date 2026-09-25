@@ -16,6 +16,7 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const createProject = useAppStore((s) => s.createProject);
+  const syncProject = useAppStore((s) => s.syncProject);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -24,6 +25,7 @@ export default function CreateProjectPage() {
   const [duration, setDuration] = useState("8 weeks");
   const [teamSize, setTeamSize] = useState(4);
   const [visibility, setVisibility] = useState<ProjectVisibility>("public");
+  const [submitting, setSubmitting] = useState(false);
 
   const toggleSkill = (s: string) => {
     setSkills((prev) =>
@@ -31,30 +33,66 @@ export default function CreateProjectPage() {
     );
   };
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    const project = createProject({
-      name,
-      description,
-      category,
-      skillsRequired: skills,
-      duration,
-      teamSize,
-      visibility,
-      ownerId: user.id,
-      college: user.organization,
-    });
+    if (!user || submitting) return;
+    setSubmitting(true);
 
-    createProjectApi({
-      title: name.trim(),
-      description: description.trim(),
-      owner_id: user.id,
-      skills_required: skills,
-      status: "in-progress",
-    }).catch(() => {});
+    try {
+      const backendProject = await createProjectApi({
+        title: name.trim(),
+        description: description.trim(),
+        owner_id: user.id,
+        skills_required: skills,
+        status: "in-progress",
+      });
 
-    router.push(`/projects/${project.id}`);
+      if (backendProject) {
+        const fullProject = {
+          ...backendProject,
+          name: name.trim(),
+          description: description.trim(),
+          category,
+          skillsRequired: skills,
+          duration,
+          teamSize,
+          visibility,
+          ownerId: user.id,
+          college: user.organization,
+        };
+        syncProject(fullProject);
+        router.push(`/projects/${fullProject.id}`);
+        return;
+      }
+
+      const localProject = createProject({
+        name,
+        description,
+        category,
+        skillsRequired: skills,
+        duration,
+        teamSize,
+        visibility,
+        ownerId: user.id,
+        college: user.organization,
+      });
+      router.push(`/projects/${localProject.id}`);
+    } catch {
+      const localProject = createProject({
+        name,
+        description,
+        category,
+        skillsRequired: skills,
+        duration,
+        teamSize,
+        visibility,
+        ownerId: user.id,
+        college: user.organization,
+      });
+      router.push(`/projects/${localProject.id}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

@@ -26,7 +26,9 @@ export interface ProjectMember {
   role: string;
   contribution: number;
   joinedAt: string;
+  name?: string;
 }
+
 
 export interface Project {
   id: string;
@@ -127,6 +129,7 @@ export interface SolutionSynthesis {
     description: string;
   }[];
   fragmentedResolutions: {
+    id?: string;
     topic: string;
     debatedIn: string;
     divergentPoints: string[];
@@ -176,6 +179,7 @@ export interface Activity {
   takeaways?: string;
   notes?: string;
   agendaItems?: string[];
+  linkedTaskId?: string;
 }
 
 export interface Invitation {

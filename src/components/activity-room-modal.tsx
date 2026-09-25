@@ -34,6 +34,8 @@ export function ActivityRoomModal({
   onClose,
 }: ActivityRoomModalProps) {
   const completeActivity = useAppStore((s) => s.completeActivity);
+  const upsertActivity = useAppStore((s) => s.upsertActivity);
+  const updateTask = useAppStore((s) => s.updateTask);
   const [takeaways, setTakeaways] = useState("");
   const [notes, setNotes] = useState("");
   const [completedItems, setCompletedItems] = useState<number[]>([]);
@@ -55,13 +57,23 @@ export function ActivityRoomModal({
     );
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     const finalNotes = notes || "Team convened and aligned on module specifications.";
     const finalTakeaways = takeaways || "Shared context across modules and resolved pending interface questions.";
     completeActivity(activity.id, finalNotes, finalTakeaways);
-    completeActivityApi(activity.id, finalTakeaways, [], finalNotes).catch(() => {});
+    const taskIds = activity.linkedTaskId ? [activity.linkedTaskId] : [];
+    try {
+      const updated = await completeActivityApi(activity.id, finalTakeaways, taskIds, finalNotes);
+      if (updated) {
+        upsertActivity(updated);
+        if (activity.linkedTaskId) {
+          updateTask(activity.linkedTaskId, { status: "completed" });
+        }
+      }
+    } catch {}
     onClose();
   };
+
 
   const isCompleted = activity.status === "completed";
 

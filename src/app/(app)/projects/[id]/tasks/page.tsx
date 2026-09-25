@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Plus,
@@ -17,7 +17,8 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { getUser } from "@/lib/mock-data";
 import { useAppStore } from "@/store/app-store";
-import { createTaskApi, updateTaskApi } from "@/lib/api";
+import { createTaskApi, updateTaskApi, deleteTaskApi, getTasks } from "@/lib/api";
+
 import type { TaskPriority, TaskStatus } from "@/lib/types";
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
@@ -45,12 +46,31 @@ export default function TasksPage() {
   );
   const moveTask = useAppStore((s) => s.moveTask);
   const addTask = useAppStore((s) => s.addTask);
+  const syncTasks = useAppStore((s) => s.syncTasks);
+  const upsertTask = useAppStore((s) => s.upsertTask);
   const deleteTask = useAppStore((s) => s.deleteTask);
   const addToast = useAppStore((s) => s.addToast);
 
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    if (id) {
+      getTasks(id)
+        .then((fetched) => {
+          if (!mounted) return;
+          if (fetched && fetched.length > 0) {
+            syncTasks(id, fetched);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [id, syncTasks]);
 
   // New task form state
   const [taskTitle, setTaskTitle] = useState("");
@@ -75,40 +95,58 @@ export default function TasksPage() {
     });
   }, [tasks, search, priorityFilter]);
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
 
     const assignee = taskAssignee || project?.members[0]?.userId || "u1";
-
-    addTask({
-      projectId: id,
-      title: taskTitle.trim(),
-      description: taskDesc.trim() || undefined,
-      assigneeId: assignee,
-      priority: taskPriority,
-      status: taskStatus,
-      dueDate: taskDueDate || undefined,
-      tags: taskTags
-        ? taskTags.split(",").map((s) => s.trim()).filter(Boolean)
-        : ["sprint"],
-    });
-
-    createTaskApi({
-      project_id: id,
-      title: taskTitle.trim(),
-      description: taskDesc.trim() || undefined,
-      assignee_id: assignee,
-      priority: taskPriority,
-      status: taskStatus,
-      due_date: taskDueDate || undefined,
-    }).catch(() => {});
+    const tags = taskTags
+      ? taskTags.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["sprint"];
+    const title = taskTitle.trim();
+    const description = taskDesc.trim() || undefined;
+    const dueDate = taskDueDate || undefined;
+    const priority = taskPriority;
+    const status = taskStatus;
 
     setTaskTitle("");
     setTaskDesc("");
     setTaskTags("");
     setTaskDueDate("");
     setCreateModalOpen(false);
+
+    try {
+      const created = await createTaskApi({
+        project_id: id,
+        title,
+        description,
+        assignee_id: assignee,
+        priority,
+        status,
+        due_date: dueDate,
+        tags,
+      });
+
+      if (created) {
+        upsertTask(created);
+        addToast("Task created successfully", "success");
+        return;
+      }
+    } catch {
+      // Fallback to local store
+    }
+
+    addTask({
+      projectId: id,
+      title,
+      description,
+      assigneeId: assignee,
+      priority,
+      status,
+      dueDate,
+      tags,
+    });
+    addToast("Task created", "success");
   };
 
   return (
@@ -187,6 +225,9 @@ export default function TasksPage() {
                   priority: "high",
                   assignee_id: "u4",
                   due_date: new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10),
+                  tags: ["ai-suggested", "peer-review", "knowledge-sharing"],
+                }).then((created) => {
+                  if (created) upsertTask(created);
                 }).catch(() => {});
                 addToast("Added AI suggested collaborative task", "success");
               }}
@@ -258,10 +299,14 @@ export default function TasksPage() {
                             )}
                             <button
                               type="button"
-                              onClick={() => deleteTask(task.id)}
+                              onClick={() => {
+                                deleteTask(task.id);
+                                deleteTaskApi(task.id).catch(() => {});
+                              }}
                               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-danger p-0.5 transition"
                               title="Delete task"
                             >
+
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>

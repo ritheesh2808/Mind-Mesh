@@ -72,15 +72,36 @@ function ActivityForm({
     return memberOptions.slice(0, 3).map((m) => m.id);
   });
 
+  const upsertActivity = useAppStore((s) => s.upsertActivity);
+
   const toggleParticipant = (id: string) => {
     setParticipants((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     );
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!title.trim()) return;
     const finalDesc = description.trim() || defaults?.description || "";
+    try {
+      const created = await createActivityApi({
+        project_id: projectId,
+        title: title.trim(),
+        description: finalDesc,
+        type: type.toLowerCase().replace(/\s+/g, "_"),
+        participants,
+        agenda: [],
+      });
+      if (created) {
+        upsertActivity(created);
+        if (defaults?.recommendationId) {
+          markRecommendation(defaults.recommendationId, "scheduled");
+        }
+        onClose();
+        return;
+      }
+    } catch {}
+
     createActivity({
       projectId,
       type,
@@ -90,19 +111,12 @@ function ActivityForm({
       dateTime,
       duration,
     });
-    createActivityApi({
-      project_id: projectId,
-      title: title.trim(),
-      description: finalDesc,
-      type: type.toLowerCase().replace(/\s+/g, "_"),
-      participants,
-      agenda: [],
-    }).catch(() => {});
     if (defaults?.recommendationId) {
       markRecommendation(defaults.recommendationId, "scheduled");
     }
     onClose();
   };
+
 
   return (
     <div className="space-y-4">

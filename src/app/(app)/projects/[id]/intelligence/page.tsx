@@ -55,6 +55,7 @@ import {
   fetchFragmentedDebates,
   fetchCollaborationRecommendations,
   castConsensusVoteApi,
+  updateTaskApi,
   type VoiceEquityResponse,
   type FragmentedDebate,
   type BackendRecommendation,
@@ -184,13 +185,24 @@ function mapRecommendationType(type: string): Recommendation["type"] {
 
   // Contribution chart
   const contributionData = useMemo(() => {
+    if (backendEquity?.members && backendEquity.members.length > 0) {
+      return backendEquity.members.map((m) => {
+        const u = getUser(m.user_id);
+        const displayName = m.name || u?.name || m.user_id;
+        return {
+          name: displayName.split(" ")[0],
+          value: m.contribution_percentage,
+          userId: m.user_id,
+        };
+      });
+    }
     if (!project) return [];
     return project.members.map((m) => ({
-      name: (getUser(m.userId)?.name || "").split(" ")[0],
+      name: (m.name || getUser(m.userId)?.name || m.userId).split(" ")[0],
       value: m.contribution,
       userId: m.userId,
     }));
-  }, [project]);
+  }, [backendEquity, project]);
 
   // Participation by channel
   const participationData = useMemo(() => [
@@ -335,7 +347,7 @@ function mapRecommendationType(type: string): Recommendation["type"] {
       return solutionSyntheses[id];
     }
 
-    if (id !== "p1") {
+    if (backendBlueprint) {
       const docModules = documents.map((doc) => ({
         name: doc.name.replace(/\.[^/.]+$/, ""),
         contributor: `${getUser(doc.uploadedBy)?.name || "Teammate"} (${getUser(doc.uploadedBy)?.department || "Contributor"})`,
@@ -344,11 +356,11 @@ function mapRecommendationType(type: string): Recommendation["type"] {
         description: doc.contentPreview?.slice(0, 130) || `Shared document specification contributed by ${getUser(doc.uploadedBy)?.name || "a member"}.`,
       }));
 
-      const bpModules = backendBlueprint?.modules?.map((m) => ({
+      const bpModules = backendBlueprint.modules?.map((m) => ({
         name: m.name,
         contributor: m.owner || "AI Engine",
         sourceType: "Document" as const,
-        status: (m.status === "approved" || m.status === "integrated" ? "integrated" : "in_progress") as "integrated" | "in_progress" | "pending_review",
+        status: (m.status === "approved" || m.status === "integrated" || m.status === "Verified" ? "integrated" : "in_progress") as "integrated" | "in_progress" | "pending_review",
         description: m.summary || (m.deliverables && m.deliverables.join(", ")) || "Synthesized architecture module.",
       })) || [];
 
@@ -365,6 +377,7 @@ function mapRecommendationType(type: string): Recommendation["type"] {
 
       const dynamicParticipation = (project?.members || []).map((m) => {
         const u = getUser(m.userId);
+        const displayName = m.name || u?.name || m.userId;
         const memberDiscussions = discussions.filter((d) => d.authorId === m.userId).length;
         const memberTasks = tasks.filter((t) => t.assigneeId === m.userId).length;
         const memberDocs = documents.filter((d) => d.uploadedBy === m.userId).length;
@@ -374,14 +387,14 @@ function mapRecommendationType(type: string): Recommendation["type"] {
         if (m.contribution >= 45 || total >= 5) level = "dominant";
         else if (m.contribution < 20 && total <= 1) level = "underrepresented";
 
-        let observation = `${u?.name || "Member"} actively coordinates across project deliverables.`;
+        let observation = `${displayName} actively coordinates across project deliverables.`;
         let recommendedRole = "Maintain current momentum and coordinate with peers on next sprint deliverables.";
 
         if (level === "dominant") {
-          observation = `${u?.name || "Member"} drives the majority of decisions and tasks (${m.contribution}% contribution). Single-point dependency risk.`;
+          observation = `${displayName} drives the majority of decisions and tasks (${m.contribution}% contribution). Single-point dependency risk.`;
           recommendedRole = "Host a 15-minute knowledge transfer session to cross-train teammates.";
         } else if (level === "underrepresented") {
-          observation = `${u?.name || "Member"} has fewer logged interactions in current sprint threads and assigned tasks.`;
+          observation = `${displayName} has fewer logged interactions in current sprint threads and assigned tasks.`;
           recommendedRole = "Pair on the next milestone review or lead the upcoming architecture validation check.";
         }
 
@@ -396,10 +409,91 @@ function mapRecommendationType(type: string): Recommendation["type"] {
 
       return {
         projectId: id,
-        headline: backendBlueprint?.architectural_summary
+        headline: backendBlueprint.architectural_summary
           ? `${project?.name || "Project"} — Coherent Architectural Blueprint`
           : `${project?.name || "Project"} — Unified Architecture & Coherent Solution`,
-        summary: backendBlueprint?.architectural_summary || `AI intelligence has unified ${documents.length} project documents, ${discussions.length} discussion threads, and ${tasks.length} tasks across ${project?.members.length || 0} members into an integrated system architecture.`,
+        summary: backendBlueprint.architectural_summary || `AI intelligence has unified ${documents.length} project documents, ${discussions.length} discussion threads, and ${tasks.length} tasks across ${project?.members.length || 0} members into an integrated system architecture.`,
+        architectureComponents: initialComponents,
+        fragmentedResolutions: (backendBlueprint.agreed_consensus || []).map((cons, idx) => ({
+          topic: cons.includes(":") ? cons.split(":")[0].trim() : `Architectural Consensus #${idx + 1}`,
+          debatedIn: `Discussions (FastAPI Architectural Debate)`,
+          divergentPoints: [
+            "Contrasting implementation paths debated across project contributors.",
+            "Benchmarked trade-offs on maintainability and runtime performance.",
+          ],
+          synthesizedResolution: cons.includes(":") ? cons.split(":").slice(1).join(":").trim() : cons,
+          consensusStatus: "resolved" as const,
+          votes: { pro: 3, con: 0, userVote: undefined },
+        })),
+        participationBalanceAnalysis: dynamicParticipation.length > 0 ? dynamicParticipation : [
+          {
+            memberId: project?.ownerId || "u1",
+            participationScore: 80,
+            level: "balanced",
+            observation: "Active contributor and project coordinator.",
+            recommendedRole: "Facilitate upcoming sprint knowledge exchange.",
+          },
+        ],
+        synthesizedAt: backendBlueprint.generated_at || new Date().toISOString(),
+      };
+    }
+
+    if (id !== "p1") {
+      const docModules = documents.map((doc) => ({
+        name: doc.name.replace(/\.[^/.]+$/, ""),
+        contributor: `${getUser(doc.uploadedBy)?.name || "Teammate"} (${getUser(doc.uploadedBy)?.department || "Contributor"})`,
+        sourceType: "Document" as const,
+        status: (doc.status === "final" ? "integrated" : "in_progress") as "integrated" | "in_progress" | "pending_review",
+        description: doc.contentPreview?.slice(0, 130) || `Shared document specification contributed by ${getUser(doc.uploadedBy)?.name || "a member"}.`,
+      }));
+
+      const initialComponents: SolutionSynthesis["architectureComponents"] = [...docModules];
+      if (initialComponents.length === 0) {
+        initialComponents.push({
+          name: `${project?.name || "System"} Core Module`,
+          contributor: `${getUser(project?.ownerId || "u1")?.name || "Project Lead"}`,
+          sourceType: "Code" as const,
+          status: "in_progress" as const,
+          description: project?.description || "Primary architectural system foundation.",
+        });
+      }
+
+      const dynamicParticipation = (project?.members || []).map((m) => {
+        const u = getUser(m.userId);
+        const displayName = m.name || u?.name || m.userId;
+        const memberDiscussions = discussions.filter((d) => d.authorId === m.userId).length;
+        const memberTasks = tasks.filter((t) => t.assigneeId === m.userId).length;
+        const memberDocs = documents.filter((d) => d.uploadedBy === m.userId).length;
+        const total = memberDiscussions + memberTasks + memberDocs;
+
+        let level: "dominant" | "balanced" | "underrepresented" = "balanced";
+        if (m.contribution >= 45 || total >= 5) level = "dominant";
+        else if (m.contribution < 20 && total <= 1) level = "underrepresented";
+
+        let observation = `${displayName} actively coordinates across project deliverables.`;
+        let recommendedRole = "Maintain current momentum and coordinate with peers on next sprint deliverables.";
+
+        if (level === "dominant") {
+          observation = `${displayName} drives the majority of decisions and tasks (${m.contribution}% contribution). Single-point dependency risk.`;
+          recommendedRole = "Host a 15-minute knowledge transfer session to cross-train teammates.";
+        } else if (level === "underrepresented") {
+          observation = `${displayName} has fewer logged interactions in current sprint threads and assigned tasks.`;
+          recommendedRole = "Pair on the next milestone review or lead the upcoming architecture validation check.";
+        }
+
+        return {
+          memberId: m.userId,
+          participationScore: Math.min(95, Math.max(25, m.contribution || 50)),
+          level,
+          observation,
+          recommendedRole,
+        };
+      });
+
+      return {
+        projectId: id,
+        headline: `${project?.name || "Project"} — Unified Architecture & Coherent Solution`,
+        summary: `AI intelligence has unified ${documents.length} project documents, ${discussions.length} discussion threads, and ${tasks.length} tasks across ${project?.members.length || 0} members into an integrated system architecture.`,
         architectureComponents: initialComponents,
         fragmentedResolutions: [
           {
@@ -529,33 +623,34 @@ function mapRecommendationType(type: string): Recommendation["type"] {
   }, [id, solutionSyntheses, project, documents, discussions, tasks, backendBlueprint]);
 
   const allFragmentedResolutions = useMemo(() => {
-    const list = [...currentSynthesis.fragmentedResolutions];
+    const list: typeof currentSynthesis.fragmentedResolutions = [];
     if (backendDebates && backendDebates.length > 0) {
       backendDebates.forEach((bd) => {
-        const alreadyExists = list.some(
-          (r) => r.topic.toLowerCase() === bd.title.toLowerCase()
-        );
-        if (!alreadyExists) {
-          list.push({
-            topic: bd.title,
-            debatedIn: `Discussions (FastAPI Debate #${bd.id})`,
-            divergentPoints: [
-              "Identified contrasting technical priorities in project discussion threads.",
-              `Divergence score assessed at ${Math.round(bd.divergence_score * 100)}% prior to resolution.`,
-            ],
-            synthesizedResolution: bd.suggested_resolution,
-            consensusStatus: bd.status === "resolved" ? "resolved" : "needs_team_vote",
-            votes: {
-              pro: bd.pro_votes,
-              con: bd.con_votes,
-              userVote: undefined,
-            },
-          });
-        }
+        list.push({
+          id: bd.id,
+          topic: bd.title,
+          debatedIn: `Discussions (FastAPI Debate #${bd.id})`,
+          divergentPoints: [
+            "Identified contrasting technical priorities in project discussion threads.",
+            `Divergence score assessed at ${Math.round(bd.divergence_score * 100)}% prior to resolution.`,
+          ],
+          synthesizedResolution: bd.suggested_resolution,
+          consensusStatus: bd.status === "resolved" ? "resolved" : "needs_team_vote",
+          votes: {
+            pro: bd.pro_votes,
+            con: bd.con_votes,
+            userVote: undefined,
+          },
+        });
       });
     }
+    currentSynthesis.fragmentedResolutions.forEach((r) => {
+      if (!list.some((existing) => existing.topic.toLowerCase() === r.topic.toLowerCase())) {
+        list.push(r);
+      }
+    });
     return list;
-  }, [currentSynthesis.fragmentedResolutions, backendDebates]);
+  }, [currentSynthesis, backendDebates]);
 
   const handleSynthesize = async () => {
     setIsSynthesizing(true);
@@ -1144,9 +1239,14 @@ ${currentSynthesis.participationBalanceAnalysis
                         size="sm"
                         variant={res.votes?.userVote === "pro" ? "primary" : "outline"}
                         className="h-7 text-xs gap-1.5"
-                        onClick={() => {
+                        onClick={async () => {
+                          const targetVoteId = res.id || (discussions[i]?.id) || `d${i + 1}`;
                           voteResolution(id, i, "pro");
-                          castConsensusVoteApi(`d${i + 1}`, "pro", currentUser?.id || "u1").catch(() => {});
+                          try {
+                            await castConsensusVoteApi(targetVoteId, "pro", currentUser?.id || "u1");
+                            const updated = await fetchFragmentedDebates(id);
+                            if (updated) setBackendDebates(updated);
+                          } catch {}
                         }}
                       >
                         <ThumbsUp className="h-3 w-3" />
@@ -1156,9 +1256,14 @@ ${currentSynthesis.participationBalanceAnalysis
                         size="sm"
                         variant={res.votes?.userVote === "con" ? "danger" : "ghost"}
                         className="h-7 text-xs gap-1.5"
-                        onClick={() => {
+                        onClick={async () => {
+                          const targetVoteId = res.id || (discussions[i]?.id) || `d${i + 1}`;
                           voteResolution(id, i, "con");
-                          castConsensusVoteApi(`d${i + 1}`, "con", currentUser?.id || "u1").catch(() => {});
+                          try {
+                            await castConsensusVoteApi(targetVoteId, "con", currentUser?.id || "u1");
+                            const updated = await fetchFragmentedDebates(id);
+                            if (updated) setBackendDebates(updated);
+                          } catch {}
                         }}
                       >
                         <Flag className="h-3 w-3" />
@@ -1337,6 +1442,9 @@ ${currentSynthesis.participationBalanceAnalysis
                   if (res.rebalancedCount === 0) {
                     addToast("Sprint tasks are already well-distributed among active members!", "info");
                   } else {
+                    if (res.taskId && res.newAssigneeId) {
+                      await updateTaskApi(res.taskId, { assignee_id: res.newAssigneeId }).catch(() => {});
+                    }
                     try {
                       const refreshed = await fetchVoiceEquity(id);
                       if (refreshed) setBackendEquity(refreshed);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Download,
@@ -22,7 +22,8 @@ import { getUser } from "@/lib/mock-data";
 import { formatRelative } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import { useAppStore } from "@/store/app-store";
-import { createDocumentApi } from "@/lib/api";
+import { createDocumentApi, deleteDocumentApi, getDocuments } from "@/lib/api";
+
 import type { Document } from "@/lib/types";
 
 const DOC_TYPES = ["PDF", "Markdown", "Spreadsheet", "Document", "Design", "Code"];
@@ -37,6 +38,8 @@ export default function DocumentsPage() {
     [allDocuments, id]
   );
   const addDocument = useAppStore((s) => s.addDocument);
+  const syncDocuments = useAppStore((s) => s.syncDocuments);
+  const upsertDocument = useAppStore((s) => s.upsertDocument);
   const deleteDocument = useAppStore((s) => s.deleteDocument);
   const summaries = useAppStore((s) => s.documentSummaries);
   const setSummary = useAppStore((s) => s.setDocumentSummary);
@@ -56,6 +59,23 @@ export default function DocumentsPage() {
   const [docStatus, setDocStatus] = useState<"draft" | "reviewed" | "final">("draft");
   const [docContent, setDocContent] = useState("");
 
+  useEffect(() => {
+    let mounted = true;
+    if (id) {
+      getDocuments(id)
+        .then((fetched) => {
+          if (!mounted) return;
+          if (fetched && fetched.length > 0) {
+            syncDocuments(id, fetched);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [id, syncDocuments]);
+
   const filtered = useMemo(() => {
     if (!q.trim()) return documents;
     const query = q.toLowerCase();
@@ -67,15 +87,36 @@ export default function DocumentsPage() {
     );
   }, [documents, q]);
 
-  const handleUpload = (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docName.trim() || !user) return;
 
-    const previewText = docContent.trim() || `# ${docName}\n\nUploaded by ${user.name}.\nThis document outlines technical specifications and collaborative notes for the current sprint.`;
+    const title = docName.trim();
+    const previewText = docContent.trim() || `# ${title}\n\nUploaded by ${user.name}.\nThis document outlines technical specifications and collaborative notes for the current sprint.`;
+
+    setDocName("");
+    setDocContent("");
+    setUploadOpen(false);
+
+    try {
+      const created = await createDocumentApi({
+        project_id: id,
+        author_id: user.id,
+        title,
+        content_text: previewText,
+        file_type: docType.toLowerCase(),
+        contributors: [user.id],
+      });
+      if (created) {
+        upsertDocument(created);
+        addToast("Document uploaded successfully", "success");
+        return;
+      }
+    } catch {}
 
     addDocument({
       projectId: id,
-      name: docName.trim(),
+      name: title,
       type: docType,
       uploadedBy: user.id,
       status: docStatus,
@@ -84,19 +125,9 @@ export default function DocumentsPage() {
       keyTopics: [docType, "Team Shared"],
     });
 
-    createDocumentApi({
-      project_id: id,
-      author_id: user.id,
-      title: docName.trim(),
-      content_text: previewText,
-      file_type: docType.toLowerCase(),
-      contributors: [user.id],
-    }).catch(() => {});
-
-    setDocName("");
-    setDocContent("");
-    setUploadOpen(false);
+    addToast("Document uploaded successfully", "success");
   };
+
 
   const handleDownload = (doc: Document) => {
     try {
@@ -260,11 +291,15 @@ export default function DocumentsPage() {
                       size="sm"
                       variant="ghost"
                       className="h-8 px-2 text-xs text-muted-foreground hover:text-danger"
-                      onClick={() => deleteDocument(doc.id)}
+                      onClick={() => {
+                        deleteDocument(doc.id);
+                        deleteDocumentApi(doc.id).catch(() => {});
+                      }}
                       title="Delete document"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
+
                   </div>
                 </div>
 

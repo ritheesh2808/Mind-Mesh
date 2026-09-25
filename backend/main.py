@@ -37,17 +37,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi import Request, HTTPException
+from backend.supabase_client import get_database_status
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": True, "status_code": exc.status_code, "detail": exc.detail},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"error": True, "status_code": 422, "detail": "Validation error", "errors": exc.errors()},
+    )
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"error": True, "status_code": 500, "detail": str(exc)},
+    )
+
 # Health & System Status
 @app.get("/health", tags=["System"])
+@app.get(f"{settings.API_V1_STR}/health", tags=["System"])
 def health_check():
-    """System health check and Supabase connectivity status"""
+    """System health check and database connectivity status"""
     connected = is_supabase_connected()
+    db_status = get_database_status()
+    is_healthy = db_status in ("database_connected", "memory_fallback_active")
     return {
-        "status": "healthy",
+        "status": "healthy" if is_healthy else "degraded",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
-        "database": "supabase" if connected else "memory_fallback_active",
-        "supabase_connected": connected
+        "database": db_status,
+        "supabase_connected": connected,
+        "memory_fallback_active": (db_status == "memory_fallback_active")
     }
 
 # Mount API Routers
@@ -61,3 +92,4 @@ app.include_router(intelligence.router, prefix=settings.API_V1_STR)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+

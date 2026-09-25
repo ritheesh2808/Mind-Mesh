@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import {
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { AvatarGroup } from "@/components/ui/avatar";
 import { getUser } from "@/lib/mock-data";
 import { useAppStore } from "@/store/app-store";
+import { getProject } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -36,6 +38,35 @@ export default function ProjectLayout({
   const pathname = usePathname();
   const id = params.id as string;
   const project = useAppStore((s) => s.projects.find((p) => p.id === id));
+  const syncProject = useAppStore((s) => s.syncProject);
+  const [attempted, setAttempted] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!project && id) {
+      getProject(id)
+        .then((p) => {
+          if (!mounted) return;
+          if (p) syncProject(p);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (mounted) setAttempted(true);
+        });
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [id, project, syncProject]);
+
+  if (!project && !attempted) {
+    return (
+      <div className="mx-auto max-w-3xl py-20 text-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+        <p className="mt-4 text-sm text-muted-foreground">Loading workspace…</p>
+      </div>
+    );
+  }
 
   if (!project) {
     return (
@@ -49,7 +80,7 @@ export default function ProjectLayout({
   }
 
   const names = project.members
-    .map((m) => getUser(m.userId)?.name || "")
+    .map((m) => m.name || getUser(m.userId)?.name || m.userId)
     .filter(Boolean);
   const base = `/projects/${id}`;
 

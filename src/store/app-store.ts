@@ -115,14 +115,26 @@ interface AppState {
   completeActivity: (activityId: string, notes?: string, takeaways?: string) => void;
   voteResolution: (projectId: string, topicIndex: number, vote: "pro" | "con") => void;
   addRecommendation: (rec: Omit<Recommendation, "id">) => void;
-  rebalanceTasks: (projectId: string) => { rebalancedCount: number };
+  rebalanceTasks: (projectId: string) => { rebalancedCount: number; taskId?: string; newAssigneeId?: string };
+
   integrateDocumentIntoSynthesis: (projectId: string, docId: string) => void;
-  markRecommendation: (id: string, status: Recommendation["status"]) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
   addToast: (message: string, type?: "success" | "info" | "error") => void;
   dismissToast: (id: string) => void;
   addNotification: (n: Omit<Notification, "id" | "read" | "createdAt">) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  markRecommendation: (id: string, status: Recommendation["status"]) => void;
+
+  syncProjects: (projects: Project[]) => void;
+  syncProject: (project: Project) => void;
+  syncTasks: (projectId: string, tasks: Task[]) => void;
+  syncDiscussions: (projectId: string, discussions: DiscussionMessage[]) => void;
+  syncDocuments: (projectId: string, documents: Document[]) => void;
+  syncActivities: (projectId: string, activities: Activity[]) => void;
+  upsertTask: (task: Task) => void;
+  upsertDiscussion: (msg: DiscussionMessage) => void;
+  upsertDocument: (doc: Document) => void;
+  upsertActivity: (act: Activity) => void;
 }
 
 function migrateSeededRecords<T extends { id: string }>(
@@ -527,8 +539,9 @@ export const useAppStore = create<AppState>()(
           href: `/projects/${projectId}/tasks`,
         });
 
-        return { rebalancedCount: 1 };
+        return { rebalancedCount: 1, taskId: candidate.id, newAssigneeId: underloaded.userId };
       },
+
 
 
       integrateDocumentIntoSynthesis: (projectId, docId) => {
@@ -647,7 +660,8 @@ export const useAppStore = create<AppState>()(
             ...s.activityFeed,
           ],
           tasks: s.tasks.map((t) =>
-            t.projectId === act.projectId && t.title === act.title
+            (t.projectId === act.projectId && t.title === act.title) ||
+            (act.linkedTaskId && t.id === act.linkedTaskId)
               ? { ...t, status: "completed" as const }
               : t
           ),
@@ -707,7 +721,7 @@ export const useAppStore = create<AppState>()(
         get().addToast(`Recorded feedback for "${target.topic}"`, "success");
       },
 
-      markRecommendation: (id, status) => {
+      markRecommendation: (id: string, status: Recommendation["status"]) => {
         set((s) => ({
           recommendations: s.recommendations.map((r) =>
             r.id === id ? { ...r, status } : r
@@ -715,7 +729,7 @@ export const useAppStore = create<AppState>()(
         }));
       },
 
-      markNotificationRead: (id) => {
+      markNotificationRead: (id: string) => {
         set((s) => ({
           notifications: s.notifications.map((n) =>
             n.id === id ? { ...n, read: true } : n
@@ -755,6 +769,79 @@ export const useAppStore = create<AppState>()(
           ],
         }));
       },
+
+      syncProjects: (projects) =>
+        set((s) => {
+          const map = new Map(s.projects.map((p) => [p.id, p]));
+          projects.forEach((p) => map.set(p.id, { ...map.get(p.id), ...p }));
+          return { projects: Array.from(map.values()) };
+        }),
+
+      syncProject: (project) =>
+        set((s) => {
+          const exists = s.projects.some((p) => p.id === project.id);
+          return {
+            projects: exists
+              ? s.projects.map((p) => (p.id === project.id ? { ...p, ...project } : p))
+              : [project, ...s.projects],
+          };
+        }),
+
+      syncTasks: (projectId, tasks) =>
+        set((s) => {
+          const otherTasks = s.tasks.filter((t) => t.projectId !== projectId);
+          return { tasks: [...otherTasks, ...tasks] };
+        }),
+
+      syncDiscussions: (projectId, discussions) =>
+        set((s) => {
+          const otherDiscussions = s.discussions.filter((d) => d.projectId !== projectId);
+          return { discussions: [...otherDiscussions, ...discussions] };
+        }),
+
+      syncDocuments: (projectId, documents) =>
+        set((s) => {
+          const otherDocs = s.documents.filter((d) => d.projectId !== projectId);
+          return { documents: [...otherDocs, ...documents] };
+        }),
+
+      syncActivities: (projectId, activities) =>
+        set((s) => {
+          const otherActs = s.activities.filter((a) => a.projectId !== projectId);
+          return { activities: [...otherActs, ...activities] };
+        }),
+
+      upsertTask: (task) =>
+        set((s) => {
+          const exists = s.tasks.some((t) => t.id === task.id);
+          return {
+            tasks: exists ? s.tasks.map((t) => (t.id === task.id ? task : t)) : [task, ...s.tasks],
+          };
+        }),
+
+      upsertDiscussion: (msg) =>
+        set((s) => {
+          const exists = s.discussions.some((d) => d.id === msg.id);
+          return {
+            discussions: exists ? s.discussions.map((d) => (d.id === msg.id ? msg : d)) : [...s.discussions, msg],
+          };
+        }),
+
+      upsertDocument: (doc) =>
+        set((s) => {
+          const exists = s.documents.some((d) => d.id === doc.id);
+          return {
+            documents: exists ? s.documents.map((d) => (d.id === doc.id ? doc : d)) : [doc, ...s.documents],
+          };
+        }),
+
+      upsertActivity: (act) =>
+        set((s) => {
+          const exists = s.activities.some((a) => a.id === act.id);
+          return {
+            activities: exists ? s.activities.map((a) => (a.id === act.id ? act : a)) : [act, ...s.activities],
+          };
+        }),
     }),
     {
       name: "mesh-app",

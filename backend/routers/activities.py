@@ -1,14 +1,27 @@
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter, HTTPException, Query
+from typing import List, Optional
 from backend.schemas import ActivityResponse, ActivityCreate, ActivityCompleteRequest
 from backend.repository import Repository
 
 router = APIRouter(prefix="/activities", tags=["Collaborative Activities"])
 
+@router.get("", response_model=List[ActivityResponse])
+def get_all_activities(project_id: Optional[str] = Query(None)):
+    """Retrieve activities, optionally filtered by project"""
+    return Repository.get_activities(project_id)
+
 @router.get("/project/{project_id}", response_model=List[ActivityResponse])
 def get_project_activities(project_id: str):
     """Retrieve scheduled and active collaboration rooms/activities"""
     return Repository.get_activities(project_id)
+
+@router.get("/{activity_id}", response_model=ActivityResponse)
+def get_activity(activity_id: str):
+    """Retrieve a single collaboration activity by ID"""
+    act = Repository.get_activity_by_id(activity_id)
+    if not act:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return act
 
 @router.post("", response_model=ActivityResponse)
 def create_activity(activity: ActivityCreate):
@@ -22,3 +35,4 @@ def complete_activity(activity_id: str, payload: ActivityCompleteRequest):
     if not updated:
         raise HTTPException(status_code=404, detail="Activity not found")
     return updated
+

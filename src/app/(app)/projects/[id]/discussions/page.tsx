@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Brain,
@@ -24,7 +24,7 @@ import { getUser } from "@/lib/mock-data";
 import { formatRelative } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import { useAppStore } from "@/store/app-store";
-import { createDiscussionApi, createTaskApi } from "@/lib/api";
+import { createDiscussionApi, createTaskApi, getDiscussions } from "@/lib/api";
 
 const QUICK_EMOJIS = ["👍", "💡", "🔥", "🎯", "✅"];
 
@@ -38,6 +38,8 @@ export default function DiscussionsPage() {
     [allDiscussions, id]
   );
   const addDiscussion = useAppStore((s) => s.addDiscussion);
+  const syncDiscussions = useAppStore((s) => s.syncDiscussions);
+  const upsertDiscussion = useAppStore((s) => s.upsertDiscussion);
   const toggleReaction = useAppStore((s) => s.toggleReaction);
   const analysis = useAppStore((s) => s.discussionAnalysis[id]);
   const setAnalysis = useAppStore((s) => s.setDiscussionAnalysis);
@@ -58,6 +60,23 @@ export default function DiscussionsPage() {
   const [showEmojiPickerFor, setShowEmojiPickerFor] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
+  useEffect(() => {
+    let mounted = true;
+    if (id) {
+      getDiscussions(id)
+        .then((fetched) => {
+          if (!mounted) return;
+          if (fetched && fetched.length > 0) {
+            syncDiscussions(id, fetched);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [id, syncDiscussions]);
+
   const topics = useMemo(() => {
     const set = new Set(
       discussions.map((d) => d.topic).filter(Boolean) as string[]
@@ -74,34 +93,45 @@ export default function DiscussionsPage() {
     return matchTopic && matchQ;
   });
 
-  const send = (e: FormEvent) => {
+  const send = async (e: FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !user) return;
 
     const chosenTopic = targetTopic.trim() || (topic === "all" ? "General" : topic);
-
-    addDiscussion({
-      projectId: id,
-      authorId: user.id,
-      content: message.trim(),
-      topic: chosenTopic,
-      replyTo: replyingTo ? { ...replyingTo } : undefined,
-    });
-
-    createDiscussionApi({
-      project_id: id,
-      author_id: user.id,
-      title: `Discussion: ${chosenTopic}`,
-      content: message.trim(),
-      type: "general",
-      status: "open",
-    }).catch(() => {});
+    const content = message.trim();
+    const reply = replyingTo ? { ...replyingTo } : undefined;
 
     setMessage("");
     setReplyingTo(null);
     setTargetTopic("");
+
+    try {
+      const created = await createDiscussionApi({
+        project_id: id,
+        author_id: user.id,
+        title: `Discussion: ${chosenTopic}`,
+        content,
+        type: "general",
+        status: "open",
+      });
+      if (created) {
+        upsertDiscussion({ ...created, topic: chosenTopic, replyTo: reply });
+        addToast("Message posted", "success");
+        return;
+      }
+    } catch {}
+
+    addDiscussion({
+      projectId: id,
+      authorId: user.id,
+      content,
+      topic: chosenTopic,
+      replyTo: reply,
+    });
+
     addToast("Message posted", "success");
   };
+
 
   const handleReaction = (msgId: string, emoji: string) => {
     toggleReaction(msgId, emoji);

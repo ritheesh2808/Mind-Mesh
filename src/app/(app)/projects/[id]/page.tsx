@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { ActivityRoomModal } from "@/components/activity-room-modal";
 import { getUser } from "@/lib/mock-data";
 import { formatDateTime, formatRelative } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { getActivities } from "@/lib/api";
 import type { Activity } from "@/lib/types";
 
 export default function ProjectOverviewPage() {
@@ -19,6 +20,24 @@ export default function ProjectOverviewPage() {
   const project = useAppStore((s) => s.projects.find((p) => p.id === id));
   const allFeed = useAppStore((s) => s.activityFeed);
   const allActivities = useAppStore((s) => s.activities);
+  const syncActivities = useAppStore((s) => s.syncActivities);
+
+  useEffect(() => {
+    let mounted = true;
+    if (id) {
+      getActivities(id)
+        .then((fetched) => {
+          if (!mounted) return;
+          if (fetched && fetched.length > 0) {
+            syncActivities(id, fetched);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [id, syncActivities]);
   const feed = useMemo(
     () => allFeed.filter((item) => item.projectId === id),
     [allFeed, id]

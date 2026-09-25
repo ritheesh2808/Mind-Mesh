@@ -67,8 +67,22 @@ export default function ProjectTeamPage() {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {project.members.map((m) => {
-          const u = getUser(m.userId);
-          if (!u) return null;
+          const u = getUser(m.userId) || {
+            id: m.userId,
+            name: m.userId === currentUser?.id ? currentUser.name : (m.role ? `${m.role} Member` : `Member (${m.userId})`),
+            email: "",
+            avatar: "",
+            role: m.role || "Contributor",
+            skills: project.skillsRequired.slice(0, 3),
+            organization: project.college || "Mind-Mesh Team",
+            department: "Engineering",
+            batch: "2026",
+            projectsCount: 1,
+            contributionsCount: 1,
+            reputation: 100,
+            github: undefined,
+            linkedin: undefined,
+          };
           const memberTasks = tasks.filter(
             (t) => t.assigneeId === m.userId && t.status !== "completed"
           );
