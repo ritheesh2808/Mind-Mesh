@@ -11,16 +11,31 @@ import type {
   Activity,
   TaskStatus,
   TaskPriority,
+  ContributionAnalyticsResponse,
+  KnowledgeGraphResponse,
+  SilosAndGapsResponse,
+  PersistentInsightResponse,
+  DetailedRecommendationResponse,
+  BlueprintPersistentResponse,
+  AnalysisSnapshotResponse,
+  ActivityImpactResponse,
+  DiscussionIntelligenceItem,
 } from "./types";
 
 export const getApiBase = () => {
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (typeof window !== "undefined") {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL;
+    if (configuredApiUrl) return configuredApiUrl.replace(/\/$/, "");
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXT_PUBLIC_API_URL must be configured for production builds.");
     }
     return "http://localhost:8000/api/v1";
   }
-  return process.env.API_URL || "http://127.0.0.1:8000/api/v1";
+  if (process.env.API_URL) return process.env.API_URL.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("API_URL must be configured for server-side production requests.");
+  }
+  return "http://127.0.0.1:8000/api/v1";
 };
 
 export const getHealthUrl = () => {
@@ -268,7 +283,7 @@ export function adaptBackendTask(bt: BackendTaskResponse): Task {
 
   return {
     id: bt.id,
-    projectId: bt.project_id || bt.projectId || "p1",
+    projectId: bt.project_id || bt.projectId || "",
     title: bt.title,
     description: bt.description || undefined,
     assigneeId: bt.assignee_id || bt.assigneeId || undefined,
@@ -299,7 +314,7 @@ export function adaptBackendDiscussion(bd: BackendDiscussionResponse): Discussio
 export function adaptBackendDocument(bdoc: BackendDocumentResponse): Document {
   return {
     id: bdoc.id,
-    projectId: bdoc.project_id || bdoc.projectId || "p1",
+    projectId: bdoc.project_id || bdoc.projectId || "",
     name: bdoc.title || bdoc.name || "Document",
     type: bdoc.file_type ? bdoc.file_type.toUpperCase() : bdoc.type || "Markdown",
     uploadedBy: bdoc.author_id || bdoc.uploadedBy || "u1",
@@ -315,7 +330,7 @@ export function adaptBackendActivity(ba: BackendActivityResponse): Activity {
   const isDone = ba.status === "completed";
   return {
     id: ba.id,
-    projectId: ba.project_id || ba.projectId || "p1",
+    projectId: ba.project_id || ba.projectId || "",
     type: ba.type ? ba.type.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Knowledge Transfer",
     title: ba.title,
     description: ba.description || "",
@@ -686,12 +701,127 @@ export async function getBlueprint(projectId: string): Promise<CoherentBlueprint
 }
 
 // -----------------------------------------------------------------------------
+// Phase 3 Deterministic ED-03 Intelligence Client APIs
+// -----------------------------------------------------------------------------
+
+export async function getContributions(projectId: string): Promise<ContributionAnalyticsResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/contributions/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getKnowledgeGraph(projectId: string): Promise<KnowledgeGraphResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/knowledge/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getSilos(projectId: string): Promise<SilosAndGapsResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/silos/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getCollectiveInsights(projectId: string): Promise<PersistentInsightResponse[] | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/insights/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getDetailedRecommendations(projectId: string): Promise<DetailedRecommendationResponse[] | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/detailed-recommendations/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getPersistentBlueprint(projectId: string): Promise<BlueprintPersistentResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/persistent-blueprint/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getAnalysisSnapshots(projectId: string): Promise<AnalysisSnapshotResponse[] | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/snapshots/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function triggerProjectAnalysis(projectId: string): Promise<unknown | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/analyze/${projectId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getActivityImpact(projectId: string, activityId: string): Promise<ActivityImpactResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/impact/${projectId}/${activityId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function getDiscussionIntelligence(projectId: string): Promise<DiscussionIntelligenceItem[] | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/intelligence/discussions-intel/${projectId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // BACKWARD-COMPATIBLE ALIASES
 // -----------------------------------------------------------------------------
 export const fetchVoiceEquity = getEquity;
 export const fetchFragmentedDebates = getDebates;
 export const fetchCollaborationRecommendations = getRecommendations;
 export const fetchCoherentSolutionBlueprint = getBlueprint;
+export const fetchContributions = getContributions;
+export const fetchKnowledgeGraph = getKnowledgeGraph;
+export const fetchKnowledgeSilos = getSilos;
+export const fetchCollectiveInsights = getCollectiveInsights;
+export const fetchDetailedRecommendations = getDetailedRecommendations;
+export const fetchPersistentBlueprint = getPersistentBlueprint;
+export const fetchAnalysisSnapshots = getAnalysisSnapshots;
+export const fetchActivityImpact = getActivityImpact;
 export const castConsensusVoteApi = voteDiscussion;
 export const createDiscussionApi = createDiscussion;
 export const createDocumentApi = createDocument;
@@ -703,4 +833,5 @@ export const completeActivityApi = completeActivity;
 export const createProjectApi = createProject;
 export const getProjectMembers = getMembers;
 export const deleteDocumentApi = deleteDocument;
+
 

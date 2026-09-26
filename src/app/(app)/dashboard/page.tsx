@@ -243,7 +243,7 @@ export default function DashboardPage() {
                   AI Insight
                 </p>
                 <p className="mt-2 font-medium leading-relaxed">{primaryInsight}</p>
-                <Link href={`/projects/${myProjects[0]?.id || "p1"}/intelligence`}>
+                <Link href={myProjects[0] ? `/projects/${myProjects[0].id}/intelligence` : "/projects"}>
                   <Button size="sm" className="mt-4 gap-1.5">
                     View Insight
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -274,6 +274,7 @@ export default function DashboardPage() {
                   size="sm"
                   variant="secondary"
                   className="mt-4"
+                  disabled={!myProjects[0]}
                   onClick={() => setActivityOpen(true)}
                 >
                   Create Activity
@@ -284,19 +285,25 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <ActivityModal
-        open={activityOpen}
-        onClose={() => setActivityOpen(false)}
-        projectId={myProjects[0]?.id || "p1"}
-        defaults={{
-          type: "Knowledge Sharing Session",
-          title: "Project decision-log knowledge share",
-          participants: ["u2", "u4", "u5"],
-          description: insights[0]?.why || "Organize a 15-minute knowledge transfer session.",
-          duration: "15 minutes",
-          recommendationId: insights[0]?.id,
-        }}
-      />
+      {myProjects[0] && (
+        <ActivityModal
+          open={activityOpen}
+          onClose={() => setActivityOpen(false)}
+          projectId={myProjects[0].id}
+          defaults={{
+            type: "Knowledge Sharing Session",
+            title: "Project decision-log knowledge share",
+            participants:
+              myProjects[0].members
+                ?.map((m) => m.userId)
+                .filter((uid) => uid !== user?.id)
+                .slice(0, 3) || [],
+            description: insights[0]?.why || "Organize a 15-minute knowledge transfer session.",
+            duration: "15 minutes",
+            recommendationId: insights[0]?.id,
+          }}
+        />
+      )}
     </div>
   );
 }

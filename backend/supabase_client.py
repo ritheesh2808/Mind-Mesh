@@ -10,11 +10,21 @@ _connection_tested: bool = False
 _connection_valid: bool = False
 
 def is_valid_supabase_config() -> bool:
-    if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+    if not settings.SUPABASE_URL:
         return False
-    if "your-project.supabase.co" in settings.SUPABASE_URL or "your-supabase" in settings.SUPABASE_KEY:
+    key = settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_KEY
+    if not key:
+        return False
+    if "your-project.supabase.co" in settings.SUPABASE_URL or "your-supabase" in key:
         return False
     return True
+
+def reset_supabase_client() -> None:
+    """Resets cached client and connection status (useful for tests and dynamic config changes)."""
+    global _supabase_client, _connection_tested, _connection_valid
+    _supabase_client = None
+    _connection_tested = False
+    _connection_valid = False
 
 def get_supabase_client() -> Optional[Client]:
     """

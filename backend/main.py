@@ -1,7 +1,15 @@
+import sys
+from pathlib import Path
+
+# Ensure repository root is on sys.path when running from backend directory
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
-from backend.supabase_client import get_supabase_client, is_supabase_connected
+from backend.supabase_client import is_supabase_connected
 from backend.routers import (
     projects,
     discussions,
@@ -58,10 +66,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception: %s", exc)
+    logger.exception("Unhandled exception")
     return JSONResponse(
         status_code=500,
-        content={"error": True, "status_code": 500, "detail": str(exc)},
+        content={"error": True, "status_code": 500, "detail": "Internal server error"},
     )
 
 # Health & System Status
@@ -71,15 +79,19 @@ def health_check():
     """System health check and database connectivity status"""
     connected = is_supabase_connected()
     db_status = get_database_status()
-    is_healthy = db_status in ("database_connected", "memory_fallback_active")
-    return {
+    is_healthy = (db_status == "database_connected") or (settings.USE_MEMORY_FALLBACK and db_status == "memory_fallback_active")
+    response = {
         "status": "healthy" if is_healthy else "degraded",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "database": db_status,
         "supabase_connected": connected,
-        "memory_fallback_active": (db_status == "memory_fallback_active")
+        "memory_fallback_active": (db_status == "memory_fallback_active"),
+        "environment": "development" if settings.USE_MEMORY_FALLBACK else "production"
     }
+    if not is_healthy:
+        return JSONResponse(status_code=503, content=response)
+    return response
 
 # Mount API Routers
 app.include_router(projects.router, prefix=settings.API_V1_STR)

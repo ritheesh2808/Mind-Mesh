@@ -23,6 +23,14 @@ def get_project_members(project_id: str):
     """Retrieve project team members and their collaborative roles"""
     return Repository.get_project_members(project_id)
 
+@router.patch("/{project_id}", response_model=ProjectResponse)
+def update_project(project_id: str, updates: dict):
+    """Update mutable project metadata."""
+    project = Repository.update_project(project_id, updates)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
 @router.post("", response_model=ProjectResponse)
 def create_project(project: ProjectCreate):
     """Create a new project workspace"""

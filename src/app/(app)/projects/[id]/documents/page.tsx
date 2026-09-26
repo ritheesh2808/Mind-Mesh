@@ -149,18 +149,16 @@ export default function DocumentsPage() {
 
   const summarize = (doc: Document) => {
     setLoadingId(doc.id);
-    setTimeout(() => {
-      let richSummary = `AI Synthesis for “${doc.name}”: Core findings establish specifications for the current project sprint. `;
-      if (doc.contentPreview?.trim()) {
-        richSummary += doc.contentPreview.trim().slice(0, 320);
-      } else {
-        richSummary += "Connects this shared document to the team's current decisions and follow-up tasks.";
-      }
+    let richSummary = `Synthesis for “${doc.name}”: Core findings establish specifications for the current project sprint. `;
+    if (doc.contentPreview?.trim()) {
+      richSummary += doc.contentPreview.trim().slice(0, 320);
+    } else {
+      richSummary += "Connects this shared document to the team's current decisions and follow-up tasks.";
+    }
 
-      setSummary(doc.id, richSummary);
-      setLoadingId(null);
-      addToast("Document AI summary generated", "success");
-    }, 850);
+    setSummary(doc.id, richSummary);
+    setLoadingId(null);
+    addToast("Document summary generated", "success");
   };
 
   return (

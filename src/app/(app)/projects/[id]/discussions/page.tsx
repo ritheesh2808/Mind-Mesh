@@ -24,7 +24,7 @@ import { getUser } from "@/lib/mock-data";
 import { formatRelative } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import { useAppStore } from "@/store/app-store";
-import { createDiscussionApi, createTaskApi, getDiscussions } from "@/lib/api";
+import { createDiscussionApi, createTaskApi, getDiscussions, getDiscussionIntelligence } from "@/lib/api";
 
 const QUICK_EMOJIS = ["👍", "💡", "🔥", "🎯", "✅"];
 
@@ -138,34 +138,59 @@ export default function DiscussionsPage() {
     setShowEmojiPickerFor(null);
   };
 
-  const analyze = () => {
+  const analyze = async () => {
     setAnalyzing(true);
-    setTimeout(() => {
-      // Dynamic synthesis based on actual messages count & topics
+    try {
+      const intel = await getDiscussionIntelligence(id);
       const topicList = topics.filter((t) => t !== "all");
-      const summaryText =
+
+      let summaryText =
         topicList.length > 0
-          ? `Discussions across topics (${topicList.join(", ")}) show convergence on core milestones with active technical debates regarding edge cases and metrics.`
+          ? `Discussions across topics (${topicList.join(", ")}) show active collaboration across ${discussions.length} message(s).`
           : "The team is actively collaborating on architectural scoping, requirements, and next implementation steps.";
+
+      let decisionText = "Team locked in foundational system architecture and distributed task owners.";
+      let questionText = "Which external evaluation dataset will be used to benchmark cross-validation?";
+      let actionText = "Finalize integration schemas and link document drafts.";
+
+      if (intel && intel.length > 0) {
+        const resolved = intel.find((item) => item.suggested_resolution);
+        if (resolved?.suggested_resolution) {
+          decisionText = resolved.suggested_resolution;
+        } else if (intel[0]?.title) {
+          decisionText = `Consensus in progress for: ${intel[0].title}`;
+        }
+
+        const questions = intel.flatMap((item) => item.unresolved_questions || []);
+        if (questions.length > 0) {
+          questionText = questions[0];
+        } else {
+          questionText = "All key architectural questions for the current sprint have recorded resolutions.";
+        }
+
+        const openDiscs = intel.filter((item) => item.consensus_status !== "consensus_reached");
+        if (openDiscs.length > 0) {
+          actionText = `Align team consensus on '${openDiscs[0].title}' through structured voting.`;
+        } else {
+          actionText = "Review agreed consensus items and proceed with sprint deliverable execution.";
+        }
+
+        const consensusCount = intel.filter((item) => item.consensus_status === "consensus_reached").length;
+        summaryText = `Deterministic analysis of ${intel.length} discussion thread(s): ${consensusCount} reached consensus, ${openDiscs.length} open for alignment.`;
+      }
 
       setAnalysis(id, {
         summary: summaryText,
-        decision:
-          id === "p1"
-            ? "The team agreed to analyze only member-authorized project discussions, shared documents, and task activity."
-            : "Team locked in foundational system architecture and distributed task owners.",
-        openQuestion:
-          id === "p1"
-            ? "How should members review and correct a generated collective summary?"
-            : "Which external evaluation dataset will be used to benchmark cross-validation?",
-        actionItem:
-          id === "p1"
-            ? "Pair the project lead with a second reviewer to document the summary correction flow."
-            : "Finalize integration schemas and link document drafts.",
+        decision: decisionText,
+        openQuestion: questionText,
+        actionItem: actionText,
       });
+      addToast("Discussion analyzed from backend intelligence", "success");
+    } catch {
+      addToast("Failed to analyze discussions from backend", "error");
+    } finally {
       setAnalyzing(false);
-      addToast("Discussion analyzed & defragmented", "success");
-    }, 900);
+    }
   };
 
   return (

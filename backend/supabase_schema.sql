@@ -188,40 +188,10 @@ alter table public.documents enable row level security;
 alter table public.activities enable row level security;
 alter table public.intelligence_insights enable row level security;
 
--- Open policies for demo and collaboration (can be scoped to auth.uid() in production)
-create policy "Allow all read profiles" on public.profiles for select using (true);
-create policy "Allow all write profiles" on public.profiles for all using (true);
-
-create policy "Allow all read projects" on public.projects for select using (true);
-create policy "Allow all write projects" on public.projects for all using (true);
-
-create policy "Allow all read project_members" on public.project_members for select using (true);
-create policy "Allow all write project_members" on public.project_members for all using (true);
-
-create policy "Allow all read tasks" on public.tasks for select using (true);
-create policy "Allow all write tasks" on public.tasks for all using (true);
-
-create policy "Allow all read discussions" on public.discussions for select using (true);
-create policy "Allow all write discussions" on public.discussions for all using (true);
-
-create policy "Allow all read discussion_comments" on public.discussion_comments for select using (true);
-create policy "Allow all write discussion_comments" on public.discussion_comments for all using (true);
-
-create policy "Allow all read discussion_votes" on public.discussion_votes for select using (true);
-create policy "Allow all write discussion_votes" on public.discussion_votes for all using (true);
-
-create policy "Allow all read documents" on public.documents for select using (true);
-create policy "Allow all write documents" on public.documents for all using (true);
-
-create policy "Allow all read activities" on public.activities for select using (true);
-create policy "Allow all write activities" on public.activities for all using (true);
-
-create policy "Allow all read intelligence_insights" on public.intelligence_insights for select using (true);
-create policy "Allow all write intelligence_insights" on public.intelligence_insights for all using (true);
-
 -- ------------------------------------------------------------------------------
 -- 11. SEED DATA (Problem Statement Case Study)
 -- ------------------------------------------------------------------------------
+/*
 insert into public.profiles (id, name, email, avatar, role, skills) values
 ('u1', 'Ritheesh', 'ritheesh@university.edu', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Lead Coordinator', array['FastAPI', 'Next.js', 'System Architecture']),
 ('u2', 'Priya Sharma', 'priya@university.edu', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', 'Data Engineer', array['Python', 'Kafka', 'ETL Pipelines', 'Pandas']),
@@ -269,12 +239,10 @@ insert into public.activities (id, project_id, title, description, type, status,
 ('act-1', 'p1', 'Knowledge Transfer & Bridge: Kafka Ingestion to PCAP Engine', 'Cross-domain pairing session between Priya (data pipeline) and Arun (security rules).', 'knowledge_transfer', 'pending', array['Priya Sharma', 'Arun Kumar'], array['Review Kafka consumer group thread isolation model', 'Profile Snort ring buffer enqueue metrics'], 't4', null, null)
 on conflict (id) do nothing;
 
+*/
 -- ==============================================================================
 -- MIND-MESH UPGRADE: NEW NORMALIZED TABLES (Phases 2 & 20)
 -- ==============================================================================
-
--- Enable vector extension if available
-create extension if not exists "vector";
 
 -- ------------------------------------------------------------------------------
 -- NEW DISCUSSION INTELLIGENCE
@@ -311,21 +279,8 @@ create table if not exists public.discussion_decisions (
 );
 
 -- ------------------------------------------------------------------------------
--- DOCUMENT INTELLIGENCE
+-- DOCUMENT METADATA
 -- ------------------------------------------------------------------------------
-create table if not exists public.document_chunks (
-    id text primary key default uuid_generate_v4()::text,
-    document_id text references public.documents(id) on delete cascade not null,
-    project_id text references public.projects(id) on delete cascade not null,
-    chunk_index integer not null,
-    content text not null,
-    metadata jsonb default '{}'::jsonb,
-    embedding vector(1536),
-    token_count integer,
-    created_at timestamptz default timezone('utc'::text, now()) not null
-);
-create index if not exists idx_doc_chunks_embedding on public.document_chunks using hnsw (embedding vector_cosine_ops);
-
 -- ------------------------------------------------------------------------------
 -- ACTIVITIES LIFECYCLE
 -- ------------------------------------------------------------------------------
@@ -346,8 +301,12 @@ create table if not exists public.activity_outcomes (
     takeaways text,
     knowledge_transferred text,
     action_items text[] default '{}',
+    before_snapshot jsonb,
+    after_snapshot jsonb,
     created_at timestamptz default timezone('utc'::text, now()) not null
 );
+alter table public.activity_outcomes add column if not exists before_snapshot jsonb;
+alter table public.activity_outcomes add column if not exists after_snapshot jsonb;
 
 -- ------------------------------------------------------------------------------
 -- CONTRIBUTION EVENT SYSTEM (Phase 3)
@@ -469,6 +428,11 @@ create table if not exists public.blueprints (
     project_id text references public.projects(id) on delete cascade not null,
     title text not null,
     summary text not null,
+    problem_statement text,
+    agreed_consensus jsonb default '[]'::jsonb,
+    unresolved_risks jsonb default '[]'::jsonb,
+    action_plan jsonb default '[]'::jsonb,
+    expected_measurable_changes jsonb default '[]'::jsonb,
     status text default 'draft',
     version integer default 1,
     generated_by text references public.profiles(id) on delete set null,
@@ -483,9 +447,20 @@ create table if not exists public.blueprint_modules (
     description text not null,
     owner_id text references public.profiles(id) on delete set null,
     status text default 'in_progress',
+    deliverables jsonb default '[]'::jsonb,
+    source_type text,
+    source_id text,
     created_at timestamptz default timezone('utc'::text, now()) not null,
     updated_at timestamptz default timezone('utc'::text, now()) not null
 );
+alter table public.blueprints add column if not exists problem_statement text;
+alter table public.blueprints add column if not exists agreed_consensus jsonb default '[]'::jsonb;
+alter table public.blueprints add column if not exists unresolved_risks jsonb default '[]'::jsonb;
+alter table public.blueprints add column if not exists action_plan jsonb default '[]'::jsonb;
+alter table public.blueprints add column if not exists expected_measurable_changes jsonb default '[]'::jsonb;
+alter table public.blueprint_modules add column if not exists deliverables jsonb default '[]'::jsonb;
+alter table public.blueprint_modules add column if not exists source_type text;
+alter table public.blueprint_modules add column if not exists source_id text;
 
 create table if not exists public.blueprint_sources (
     id text primary key default uuid_generate_v4()::text,
@@ -514,7 +489,6 @@ create table if not exists public.analysis_snapshots (
 alter table public.discussion_messages enable row level security;
 alter table public.discussion_viewpoints enable row level security;
 alter table public.discussion_decisions enable row level security;
-alter table public.document_chunks enable row level security;
 alter table public.activity_participants enable row level security;
 alter table public.activity_outcomes enable row level security;
 alter table public.contributions enable row level security;
@@ -528,25 +502,217 @@ alter table public.recommendation_sources enable row level security;
 alter table public.blueprints enable row level security;
 alter table public.blueprint_modules enable row level security;
 alter table public.blueprint_sources enable row level security;
-alter table public.analysis_snapshots enable row level security;
+alter table public.analysis_snapshots add column if not exists activity_id text references public.activities(id) on delete cascade;
+create index if not exists idx_activity_outcomes_activity on public.activity_outcomes(activity_id);
 
--- Create default permissive policies for development (replace with scoped in prod)
-create policy "Allow all read on new tables" on public.discussion_messages for select using (true);
-create policy "Allow all write on new tables" on public.discussion_messages for all using (true);
--- (Repeating the pattern for the rest to ensure they work in this prototype)
-create policy "Allow all read on contributions" on public.contributions for select using (true);
-create policy "Allow all write on contributions" on public.contributions for all using (true);
-create policy "Allow all read on knowledge_nodes" on public.knowledge_nodes for select using (true);
-create policy "Allow all write on knowledge_nodes" on public.knowledge_nodes for all using (true);
-create policy "Allow all read on knowledge_edges" on public.knowledge_edges for select using (true);
-create policy "Allow all write on knowledge_edges" on public.knowledge_edges for all using (true);
-create policy "Allow all read on insights" on public.insights for select using (true);
-create policy "Allow all write on insights" on public.insights for all using (true);
-create policy "Allow all read on insight_evidence" on public.insight_evidence for select using (true);
-create policy "Allow all write on insight_evidence" on public.insight_evidence for all using (true);
-create policy "Allow all read on recommendations" on public.recommendations for select using (true);
-create policy "Allow all write on recommendations" on public.recommendations for all using (true);
-create policy "Allow all read on blueprints" on public.blueprints for select using (true);
-create policy "Allow all write on blueprints" on public.blueprints for all using (true);
-create policy "Allow all read on blueprint_modules" on public.blueprint_modules for select using (true);
-create policy "Allow all write on blueprint_modules" on public.blueprint_modules for all using (true);
+create or replace function public.is_project_member(target_project_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1
+        from public.project_members pm
+        where pm.project_id = target_project_id
+          and pm.user_id = (select auth.uid()::text)
+    ) or exists (
+        select 1
+        from public.projects p
+        where p.id = target_project_id
+          and p.owner_id = (select auth.uid()::text)
+    );
+$$;
+
+do $$
+declare
+    target_table text;
+    target_policy text;
+begin
+    foreach target_table in array array[
+        'profiles', 'projects', 'project_members', 'tasks', 'discussions',
+        'discussion_comments', 'discussion_votes', 'documents', 'activities',
+        'intelligence_insights', 'discussion_messages', 'discussion_viewpoints',
+        'discussion_decisions', 'activity_participants', 'activity_outcomes',
+        'contributions', 'knowledge_nodes', 'knowledge_edges', 'insights',
+        'insight_evidence', 'recommendations', 'recommendation_participants',
+        'recommendation_sources', 'blueprints', 'blueprint_modules',
+        'blueprint_sources', 'analysis_snapshots', 'document_chunks'
+    ] loop
+        if to_regclass(format('public.%I', target_table)) is not null then
+            execute format('alter table public.%I enable row level security', target_table);
+            for target_policy in
+                select policyname from pg_policies
+                where schemaname = 'public' and tablename = target_table
+            loop
+                execute format('drop policy %I on public.%I', target_policy, target_table);
+            end loop;
+        end if;
+    end loop;
+end;
+$$;
+
+create policy "profile_read_shared_projects" on public.profiles
+for select to authenticated
+using (
+    id = (select auth.uid()::text)
+    or exists (
+        select 1 from public.project_members pm
+        where pm.user_id = profiles.id
+          and public.is_project_member(pm.project_id)
+    )
+);
+create policy "profile_insert_self" on public.profiles
+for insert to authenticated
+with check (id = (select auth.uid()::text));
+create policy "profile_update_self" on public.profiles
+for update to authenticated
+using (id = (select auth.uid()::text))
+with check (id = (select auth.uid()::text));
+
+create policy "project_members_read_member" on public.projects
+for select to authenticated
+using (public.is_project_member(id));
+create policy "project_create_as_owner" on public.projects
+for insert to authenticated
+with check (owner_id = (select auth.uid()::text));
+create policy "project_update_as_owner" on public.projects
+for update to authenticated
+using (owner_id = (select auth.uid()::text))
+with check (owner_id = (select auth.uid()::text));
+create policy "project_delete_as_owner" on public.projects
+for delete to authenticated
+using (owner_id = (select auth.uid()::text));
+
+create policy "project_members_read_self_or_member" on public.project_members
+for select to authenticated
+using (
+    user_id = (select auth.uid()::text)
+    or public.is_project_member(project_id)
+);
+create policy "project_members_manage_as_owner" on public.project_members
+for all to authenticated
+using (
+    exists (
+        select 1 from public.projects p
+        where p.id = project_members.project_id
+          and p.owner_id = (select auth.uid()::text)
+    )
+)
+with check (
+    exists (
+        select 1 from public.projects p
+        where p.id = project_members.project_id
+          and p.owner_id = (select auth.uid()::text)
+    )
+);
+
+do $$
+declare
+    target_table text;
+begin
+    foreach target_table in array array[
+        'tasks', 'discussions', 'documents', 'activities', 'intelligence_insights',
+        'contributions', 'knowledge_nodes', 'knowledge_edges', 'insights',
+        'recommendations', 'blueprints', 'analysis_snapshots'
+    ] loop
+        execute format(
+            'create policy project_member_access on public.%I for all to authenticated using (public.is_project_member(project_id)) with check (public.is_project_member(project_id))',
+            target_table
+        );
+    end loop;
+end;
+$$;
+
+create policy "discussion_message_member_access" on public.discussion_messages
+for all to authenticated
+using (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)))
+with check (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)));
+create policy "discussion_viewpoint_member_access" on public.discussion_viewpoints
+for all to authenticated
+using (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)))
+with check (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)));
+create policy "discussion_decision_member_access" on public.discussion_decisions
+for all to authenticated
+using (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)))
+with check (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)));
+create policy "discussion_comment_member_access" on public.discussion_comments
+for all to authenticated
+using (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)))
+with check (exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id)));
+create policy "discussion_vote_member_access" on public.discussion_votes
+for all to authenticated
+using (
+    user_id = (select auth.uid()::text)
+    and exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id))
+)
+with check (
+    user_id = (select auth.uid()::text)
+    and exists (select 1 from public.discussions d where d.id = discussion_id and public.is_project_member(d.project_id))
+);
+create policy "activity_participant_member_access" on public.activity_participants
+for all to authenticated
+using (exists (select 1 from public.activities a where a.id = activity_id and public.is_project_member(a.project_id)))
+with check (exists (select 1 from public.activities a where a.id = activity_id and public.is_project_member(a.project_id)));
+create policy "activity_outcome_member_access" on public.activity_outcomes
+for all to authenticated
+using (exists (select 1 from public.activities a where a.id = activity_id and public.is_project_member(a.project_id)))
+with check (exists (select 1 from public.activities a where a.id = activity_id and public.is_project_member(a.project_id)));
+create policy "insight_evidence_member_access" on public.insight_evidence
+for all to authenticated
+using (exists (select 1 from public.insights i where i.id = insight_id and public.is_project_member(i.project_id)))
+with check (exists (select 1 from public.insights i where i.id = insight_id and public.is_project_member(i.project_id)));
+create policy "recommendation_participant_member_access" on public.recommendation_participants
+for all to authenticated
+using (exists (select 1 from public.recommendations r where r.id = recommendation_id and public.is_project_member(r.project_id)))
+with check (exists (select 1 from public.recommendations r where r.id = recommendation_id and public.is_project_member(r.project_id)));
+create policy "recommendation_source_member_access" on public.recommendation_sources
+for all to authenticated
+using (exists (select 1 from public.recommendations r where r.id = recommendation_id and public.is_project_member(r.project_id)))
+with check (exists (select 1 from public.recommendations r where r.id = recommendation_id and public.is_project_member(r.project_id)));
+create policy "blueprint_module_member_access" on public.blueprint_modules
+for all to authenticated
+using (exists (select 1 from public.blueprints b where b.id = blueprint_id and public.is_project_member(b.project_id)))
+with check (exists (select 1 from public.blueprints b where b.id = blueprint_id and public.is_project_member(b.project_id)));
+create policy "blueprint_source_member_access" on public.blueprint_sources
+for all to authenticated
+using (exists (select 1 from public.blueprints b where b.id = blueprint_id and public.is_project_member(b.project_id)))
+with check (exists (select 1 from public.blueprints b where b.id = blueprint_id and public.is_project_member(b.project_id)));
+
+-- ------------------------------------------------------------------------------
+-- PERFORMANCE INDEXES (All Core & Intelligence Tables)
+-- ------------------------------------------------------------------------------
+create index if not exists idx_discussion_messages_discussion on public.discussion_messages(discussion_id);
+create index if not exists idx_discussion_messages_author on public.discussion_messages(author_id);
+create index if not exists idx_discussion_viewpoints_discussion on public.discussion_viewpoints(discussion_id);
+create index if not exists idx_discussion_viewpoints_author on public.discussion_viewpoints(author_id);
+create index if not exists idx_discussion_decisions_discussion on public.discussion_decisions(discussion_id);
+create index if not exists idx_discussion_votes_discussion on public.discussion_votes(discussion_id);
+create index if not exists idx_discussion_votes_user on public.discussion_votes(user_id);
+create index if not exists idx_activity_participants_activity on public.activity_participants(activity_id);
+create index if not exists idx_activity_participants_user on public.activity_participants(user_id);
+create index if not exists idx_activity_outcomes_activity on public.activity_outcomes(activity_id);
+create index if not exists idx_contributions_project on public.contributions(project_id);
+create index if not exists idx_contributions_user on public.contributions(user_id);
+create index if not exists idx_contributions_entity on public.contributions(entity_type, entity_id);
+create index if not exists idx_knowledge_nodes_project on public.knowledge_nodes(project_id);
+create index if not exists idx_knowledge_nodes_type_label on public.knowledge_nodes(node_type, label);
+create index if not exists idx_knowledge_edges_project on public.knowledge_edges(project_id);
+create index if not exists idx_knowledge_edges_source on public.knowledge_edges(source_node_id);
+create index if not exists idx_knowledge_edges_target on public.knowledge_edges(target_node_id);
+create index if not exists idx_knowledge_edges_type on public.knowledge_edges(edge_type);
+create index if not exists idx_insights_project on public.insights(project_id);
+create index if not exists idx_insight_evidence_insight on public.insight_evidence(insight_id);
+create index if not exists idx_recommendations_project on public.recommendations(project_id);
+create index if not exists idx_recommendations_insight on public.recommendations(insight_id);
+create index if not exists idx_rec_participants_rec on public.recommendation_participants(recommendation_id);
+create index if not exists idx_rec_participants_user on public.recommendation_participants(user_id);
+create index if not exists idx_rec_sources_rec on public.recommendation_sources(recommendation_id);
+create index if not exists idx_blueprints_project on public.blueprints(project_id);
+create index if not exists idx_blueprint_modules_bp on public.blueprint_modules(blueprint_id);
+create index if not exists idx_blueprint_modules_owner on public.blueprint_modules(owner_id);
+create index if not exists idx_blueprint_sources_bp on public.blueprint_sources(blueprint_id);
+create index if not exists idx_blueprint_sources_module on public.blueprint_sources(module_id);
+create index if not exists idx_analysis_snapshots_project on public.analysis_snapshots(project_id);
+

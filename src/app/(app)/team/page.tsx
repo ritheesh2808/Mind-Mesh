@@ -24,6 +24,7 @@ export default function TeamPage() {
   const user = useAuthStore((s) => s.user);
   const projects = useAppStore((s) => s.projects);
   const sendProjectInvite = useAppStore((s) => s.sendProjectInvite);
+  const addToast = useAppStore((s) => s.addToast);
   const [query, setQuery] = useState("Python + ML");
 
   // Invite modal state
@@ -33,14 +34,14 @@ export default function TeamPage() {
 
   const myProjects = useMemo(() => {
     return projects.filter((p) =>
-      p.members.some((m) => m.userId === user?.id || m.userId === "u1")
+      p.members.some((m) => (user?.id ? m.userId === user.id : true))
     );
   }, [projects, user]);
 
   const teammates = useMemo(() => {
     const ids = new Set<string>();
     projects.forEach((p) => {
-      if (p.members.some((m) => m.userId === user?.id || m.userId === "u1")) {
+      if (p.members.some((m) => (user?.id ? m.userId === user.id : true))) {
         p.members.forEach((m) => ids.add(m.userId));
       }
     });
@@ -70,10 +71,14 @@ export default function TeamPage() {
     e.preventDefault();
     if (!invitee) return;
 
-    const projId = targetProjectId || myProjects[0]?.id || "p1";
+    const projId = targetProjectId || myProjects[0]?.id || projects[0]?.id;
+    if (!projId || !user?.id) {
+      addToast("Please select or create a project before inviting teammates.", "error");
+      return;
+    }
     sendProjectInvite(
       projId,
-      user?.id || "u1",
+      user.id,
       invitee.id,
       inviteNote || `Hi ${invitee?.name ? invitee.name.split(" ")[0] : "there"}, we would love to have your skills on our project!`
     );
@@ -132,7 +137,7 @@ export default function TeamPage() {
                   className="text-xs h-8 text-primary"
                   onClick={() => {
                     setInvitee(u);
-                    setTargetProjectId(myProjects[0]?.id || "p1");
+                    setTargetProjectId(myProjects[0]?.id || projects[0]?.id || "");
                   }}
                 >
                   Invite to Project
@@ -221,7 +226,7 @@ export default function TeamPage() {
                       className="mt-4 w-full gap-1.5 text-xs"
                       onClick={() => {
                         setInvitee(u);
-                        setTargetProjectId(myProjects[0]?.id || "p1");
+                        setTargetProjectId(myProjects[0]?.id || projects[0]?.id || "");
                       }}
                     >
                       <Send className="h-3 w-3" />

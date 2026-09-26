@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatRelative } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { getCollectiveInsights } from "@/lib/api";
 
 export default function InsightsPage() {
   const insights = useAppStore((s) => s.insights);
@@ -16,27 +17,48 @@ export default function InsightsPage() {
   const addToast = useAppStore((s) => s.addToast);
 
   const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [scanning, setScanning] = useState(false);
 
   const filtered = useMemo(() => {
     if (severityFilter === "all") return insights;
     return insights.filter((i) => i.severity === severityFilter);
   }, [insights, severityFilter]);
 
-  const handleScan = () => {
-    addInsight({
-      projectId: "p1",
-      type: "participation_pattern",
-      title: "Shared Context Needs a Second Review",
-      explanation:
-        "Recent authorized project discussions show a shared decision log taking shape, while one open question still needs another teammate's perspective.",
-      evidence: [
-        "Project decisions are linked to their source discussion",
-        "The summary correction flow remains an open question",
-      ],
-      suggestedAction: "Invite a teammate to review the collective summary and add missing context.",
-      severity: "info",
-    });
-    addToast("Cross-project collaboration scan complete", "success");
+  const handleScan = async () => {
+    if (projects.length === 0) {
+      addToast("No active projects found to scan", "info");
+      return;
+    }
+    setScanning(true);
+    let totalAdded = 0;
+    try {
+      for (const proj of projects) {
+        const backendInsights = await getCollectiveInsights(proj.id);
+        if (backendInsights && backendInsights.length > 0) {
+          for (const bi of backendInsights) {
+            addInsight({
+              projectId: proj.id,
+              type: bi.insight_type === "participation_gap" ? "participation_pattern" : "knowledge_concentration",
+              title: bi.title,
+              explanation: bi.summary,
+              evidence: bi.evidence.map((e) => `${e.source_type}: ${e.description}`),
+              suggestedAction: bi.action_items[0] || "Review project metrics and collaborate on next steps.",
+              severity: bi.severity === "urgent" ? "urgent" : bi.severity === "attention" ? "attention" : "info",
+            });
+            totalAdded++;
+          }
+        }
+      }
+      if (totalAdded > 0) {
+        addToast(`Scanned ${projects.length} project(s): ${totalAdded} collective insight(s) synchronized`, "success");
+      } else {
+        addToast(`Scanned ${projects.length} project(s): No active bottlenecks or silos detected`, "success");
+      }
+    } catch {
+      addToast("Error scanning project insights from backend", "error");
+    } finally {
+      setScanning(false);
+    }
   };
 
   return (
@@ -49,9 +71,9 @@ export default function InsightsPage() {
           </p>
         </div>
 
-        <Button onClick={handleScan} className="gap-2 shadow-sm text-xs h-9">
-          <Sparkles className="h-3.5 w-3.5" />
-          Scan All Workspaces
+        <Button onClick={handleScan} disabled={scanning} className="gap-2 shadow-sm text-xs h-9">
+          <Sparkles className={`h-3.5 w-3.5 ${scanning ? "animate-spin" : ""}`} />
+          {scanning ? "Scanning…" : "Scan All Workspaces"}
         </Button>
       </div>
 
